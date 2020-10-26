@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html><head>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge"><title>Using CFSSL for CA and Certs - Hareesh Puthalath</title><meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<meta property="og:description" content="" />
+	<meta name="twitter:description" content="" />
+	<meta name="description" content="" />
+	<meta name="description" content="" />
+
+	<meta property="og:title" content="Using CFSSL for CA and Certs | Hareesh Puthalath" />
+	<meta name="twitter:title" content="Using CFSSL for CA and Certs | Hareesh Puthalath" />
+
+	<meta property="og:image" content=""/>
+	<meta itemprop="name" content="Using CFSSL for CA and Certs | Hareesh Puthalath" />
+	<meta name="application-name" content="Using CFSSL for CA and Certs | Hareesh Puthalath" />
+	<meta property="og:site_name" content="" />
+	<meta property="og:title" content="Using CFSSL for CA and Certs" />
+<meta property="og:description" content="This is a working example of creating a CA , intermediate CA and leaf certificates based on CFSSL
+Note: These notes are based on cfssl version 1." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="http://hareeshpc.github.io/posts/02-cfssl-ca_tutorial/" />
+<meta property="article:published_time" content="2020-10-26T22:21:01+01:00" />
+<meta property="article:modified_time" content="2020-10-26T22:21:01+01:00" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Using CFSSL for CA and Certs"/>
+<meta name="twitter:description" content="This is a working example of creating a CA , intermediate CA and leaf certificates based on CFSSL
+Note: These notes are based on cfssl version 1."/>
+<script src="http://hareeshpc.github.iojs/feather.min.js"></script>
+	
+	<link href="http://hareeshpc.github.iocss/fonts.css" rel="stylesheet">
+	
+	<link rel="stylesheet" type="text/css" media="screen" href="http://hareeshpc.github.iocss/main.css" />
+	
+</head>
+<body>
+        <div class="content"><header>
+	<div class="main">
+		<a href="http://hareeshpc.github.io">Hareesh Puthalath</a>
+	</div>
+	<nav>
+		
+		<a href="/">Home</a>
+		
+		<a href="/posts">All posts</a>
+		
+		<a href="/about">About</a>
+		
+		<a href="/tags">Tags</a>
+		
+	</nav>
+</header>
+
+<main>
+	<article>
+		<div class="title">
+			<h1 class="title">Using CFSSL for CA and Certs</h1>
+			<div class="meta">Posted on Oct 26, 2020</div>
+		</div>
+		
+
+		<section class="body">
+			<p>This is a working example of creating a CA , intermediate CA and leaf certificates based on CFSSL</p>
+<p>Note: These notes are based on cfssl version 1.4.1</p>
+<blockquote>
+<p>This tutorial is based on the blog entry by Johannes <a href="https://jite.eu/2019/2/6/ca-with-cfssl/">ca-with-cfssl</a>. It has been adapted, with minor improvements.Fixes were made for working with cfssl 1.4.1.</p>
+</blockquote>
+<h2 id="pre-requisites">Pre-requisites</h2>
+<ul>
+<li>
+<p>Obtain <code>cfssl</code> and <code>cfssljson</code> binaries and put them in the path.</p>
+</li>
+<li>
+<p>Create a directory heirarchy as follows.</p>
+</li>
+</ul>
+<pre><code>/pki
+  /root-ca
+  /intermediate-ca
+    /dev
+    /prod
+  /leaf-certs 
+</code></pre><div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">mkdir -p pki/<span style="color:#f92672">{</span>root-ca,intermediate-ca,leaf-certs<span style="color:#f92672">}</span>
+mkdir -p pki/intermediate-ca/<span style="color:#f92672">{</span>dev,prod<span style="color:#f92672">}</span>
+</code></pre></div><ul>
+<li>Set Env variables for ease</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">ROOT<span style="color:#f92672">=</span><span style="color:#66d9ef">$(</span>pwd<span style="color:#66d9ef">)</span>/pki
+ROOT_CA_PATH<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>ROOT<span style="color:#e6db74">}</span>/root-ca
+INTERMEDIATE_CA_PATH<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>ROOT<span style="color:#e6db74">}</span>/intermediate-ca
+DEV_INTERMED_CA_PATH<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>ROOT<span style="color:#e6db74">}</span>/intermediate-ca/dev
+PROD_INTERMED_CA_PATH<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>ROOT<span style="color:#e6db74">}</span>/intermediate-ca/prod
+LEAF_CERTS_PATH<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>ROOT<span style="color:#e6db74">}</span>/leaf-certs
+</code></pre></div><h2 id="root-ca">Root CA</h2>
+<h3 id="root-ca-sr">Root CA SR</h3>
+<blockquote>
+<p>Note: All comamnds are run inside the <code>root-ca</code> folder</p>
+</blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt;&gt; root-ca-sr.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;CN&#34;: &#34;Hareesh Root CA&#34;,
+</span><span style="color:#e6db74">    &#34;key&#34;: {
+</span><span style="color:#e6db74">        &#34;algo&#34;: &#34;rsa&#34;,
+</span><span style="color:#e6db74">        &#34;size&#34;: 2048
+</span><span style="color:#e6db74">    },
+</span><span style="color:#e6db74">    &#34;names&#34;: [
+</span><span style="color:#e6db74">        {
+</span><span style="color:#e6db74">               &#34;C&#34;: &#34;SE&#34;,
+</span><span style="color:#e6db74">               &#34;L&#34;: &#34;Stockholm&#34;,
+</span><span style="color:#e6db74">               &#34;O&#34;: &#34;Company&#34;,
+</span><span style="color:#e6db74">               &#34;ST&#34;: &#34;Stockholm&#34;
+</span><span style="color:#e6db74">        }
+</span><span style="color:#e6db74">    ]
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+</code></pre></div><h3 id="legend">Legend</h3>
+<p>The names array contains an object, the short codes means:</p>
+<ul>
+<li>C ISO 3166-2 country code (SE = Sweden),</li>
+<li>L Locality, I.E., city name of the company,</li>
+<li>O Organization,</li>
+<li>ST State.</li>
+</ul>
+<p>You could also add OU, which stands for Organizational Unit, to this list if you wish.
+In this case, it is not needed as this is the root of all the certs.</p>
+<h3 id="root-certs">Root certs</h3>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cfssl gencert -initca <span style="color:#e6db74">${</span>ROOT_CA_PATH<span style="color:#e6db74">}</span>/root-ca-sr.json | cfssljson -bare ca
+</code></pre></div><h2 id="intermediate-ca">Intermediate CA</h2>
+<p>All the intermediate CA have an <code>expiry</code> time of 43800 hours or ~ 5 years.</p>
+<blockquote>
+<p>Note: All commands are run inside the <code>intermediate-ca</code> folder</p>
+</blockquote>
+<p>Create <code>/intermediate-ca/config.json</code></p>
+<h3 id="intermediate-sr-and-config">Intermediate SR and config</h3>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${INTERMEDIATE_CA_PATH}/config.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;signing&#34;: {
+</span><span style="color:#e6db74">        &#34;default&#34;: {
+</span><span style="color:#e6db74">            &#34;expiry&#34;: &#34;43800h&#34;
+</span><span style="color:#e6db74">        },
+</span><span style="color:#e6db74">        &#34;profiles&#34;: {
+</span><span style="color:#e6db74">            &#34;dev&#34;: {
+</span><span style="color:#e6db74">                &#34;usages&#34;: [
+</span><span style="color:#e6db74">                    &#34;signing&#34;,
+</span><span style="color:#e6db74">                    &#34;key encipherment&#34;,
+</span><span style="color:#e6db74">                    &#34;cert sign&#34;,
+</span><span style="color:#e6db74">                    &#34;crl sign&#34;,
+</span><span style="color:#e6db74">                    &#34;server auth&#34;,
+</span><span style="color:#e6db74">                    &#34;client auth&#34;
+</span><span style="color:#e6db74">                ],
+</span><span style="color:#e6db74">		        &#34;expiry&#34;: &#34;43800h&#34;,
+</span><span style="color:#e6db74">                &#34;ca_constraint&#34;: {
+</span><span style="color:#e6db74">                    &#34;is_ca&#34;: true
+</span><span style="color:#e6db74">                }
+</span><span style="color:#e6db74">            },
+</span><span style="color:#e6db74">            &#34;prod&#34;: {
+</span><span style="color:#e6db74">                &#34;usages&#34;: [     
+</span><span style="color:#e6db74">                    &#34;signing&#34;,
+</span><span style="color:#e6db74">                    &#34;key encipherment&#34;,
+</span><span style="color:#e6db74">                    &#34;cert sign&#34;,
+</span><span style="color:#e6db74">                    &#34;crl sign&#34;
+</span><span style="color:#e6db74">                ],
+</span><span style="color:#e6db74">		        &#34;expiry&#34;: &#34;43800h&#34;,
+</span><span style="color:#e6db74">                &#34;ca_constraint&#34;: {
+</span><span style="color:#e6db74">                    &#34;is_ca&#34;: true
+</span><span style="color:#e6db74">                }
+</span><span style="color:#e6db74">            }
+</span><span style="color:#e6db74">        }
+</span><span style="color:#e6db74">    }
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+
+cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${INTERMEDIATE_CA_PATH}/intermediate-ca.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;CN&#34;: &#34;Hareesh Intermed CA&#34;,
+</span><span style="color:#e6db74">    &#34;key&#34;: {
+</span><span style="color:#e6db74">        &#34;algo&#34;: &#34;rsa&#34;,
+</span><span style="color:#e6db74">        &#34;size&#34;: 2048
+</span><span style="color:#e6db74">    },
+</span><span style="color:#e6db74">    &#34;names&#34;: [
+</span><span style="color:#e6db74">        {
+</span><span style="color:#e6db74">               &#34;C&#34;: &#34;SE&#34;,
+</span><span style="color:#e6db74">               &#34;L&#34;: &#34;Stockholm&#34;,
+</span><span style="color:#e6db74">               &#34;O&#34;: &#34;Company&#34;,
+</span><span style="color:#e6db74">               &#34;ST&#34;: &#34;Stockholm&#34;
+</span><span style="color:#e6db74">        }
+</span><span style="color:#e6db74">    ]
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+</code></pre></div><h3 id="intermediate-ca-certs">Intermediate CA certs</h3>
+<h4 id="dev-intermediate-ca">Dev Intermediate CA</h4>
+<blockquote>
+<p>For dev : All commands are run inside <code>intermediate-ca/dev</code> folder</p>
+</blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cd <span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>
+cfssl genkey -initca <span style="color:#e6db74">${</span>INTERMEDIATE_CA_PATH<span style="color:#e6db74">}</span>/intermediate-ca.json | cfssljson -bare dev
+
+cfssl sign -ca <span style="color:#e6db74">${</span>ROOT_CA_PATH<span style="color:#e6db74">}</span>/ca.pem -ca-key <span style="color:#e6db74">${</span>ROOT_CA_PATH<span style="color:#e6db74">}</span>/ca-key.pem --config <span style="color:#e6db74">${</span>INTERMEDIATE_CA_PATH<span style="color:#e6db74">}</span>/config.json -profile dev  dev.csr | cfssljson -bare dev
+</code></pre></div><h4 id="prod-intermediate-ca">Prod Intermediate CA</h4>
+<blockquote>
+<p>For prod : All commands are run inside <code>intermediate-ca/prod</code> folder</p>
+</blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cd <span style="color:#e6db74">${</span>PROD_INTERMED_CA_PATH<span style="color:#e6db74">}</span>
+cfssl genkey -initca <span style="color:#e6db74">${</span>INTERMEDIATE_CA_PATH<span style="color:#e6db74">}</span>/intermediate-ca.json | cfssljson -bare prod
+
+cfssl sign -ca <span style="color:#e6db74">${</span>ROOT_CA_PATH<span style="color:#e6db74">}</span>/ca.pem -ca-key <span style="color:#e6db74">${</span>ROOT_CA_PATH<span style="color:#e6db74">}</span>/ca-key.pem --config <span style="color:#e6db74">${</span>INTERMEDIATE_CA_PATH<span style="color:#e6db74">}</span>/config.json -profile prod  prod.csr | cfssljson -bare prod
+</code></pre></div><p>You will end up with a tree heirarchy like this</p>
+<pre><code>intermediate-ca
+├── config.json
+├── dev
+│   ├── dev.csr
+│   ├── dev-key.pem
+│   └── dev.pem
+├── intermediate-ca.json
+└── prod
+    ├── prod.csr
+    ├── prod-key.pem
+    └── prod.pem
+
+2 directories, 8 files
+</code></pre><h2 id="leaf-certificates">Leaf Certificates</h2>
+<p>Three kinds of certificates</p>
+<ul>
+<li>server : For server based services expecting connections over TLS.</li>
+<li>client:  For clients who need to authenticate with servers</li>
+<li>peer : Services who need to both authenticate to other services as well identify themselves via TLS.</li>
+</ul>
+<p>The main difference between these three are  in the <code>usages</code> part as defined in <a href="https://github.com/cloudflare/cfssl/blob/master/doc/cmd/cfssl.txt">CFSSL Documentation Profiles</a> (Go to Signing Profiles
+-&gt; Key Usages)</p>
+<ul>
+<li>server: &ldquo;signing&rdquo;,&ldquo;digital signing&rdquo;, &ldquo;key encipherment&rdquo;,      &ldquo;server auth&rdquo;</li>
+<li>client: &ldquo;signing&rdquo;,&ldquo;digital signature&rdquo;,&ldquo;key encipherment&rdquo;,    &ldquo;client auth&rdquo;</li>
+<li>peer: &ldquo;signing&rdquo;, &ldquo;digital signature&rdquo;, &ldquo;key encipherment&rdquo;, &ldquo;client auth&rdquo;, &ldquo;server auth&rdquo;</li>
+</ul>
+<h3 id="leaf-signing-usage-config">Leaf Signing Usage Config</h3>
+<blockquote>
+<p>Note: All commands are run inside the <code>leaf-certs</code> folder</p>
+</blockquote>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${LEAF_CERTS_PATH}/leaf-config.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;signing&#34;: {
+</span><span style="color:#e6db74">        &#34;default&#34;: {
+</span><span style="color:#e6db74">            &#34;expiry&#34;: &#34;43800h&#34;
+</span><span style="color:#e6db74">        },
+</span><span style="color:#e6db74">        &#34;profiles&#34;: {
+</span><span style="color:#e6db74">            &#34;server&#34;: {
+</span><span style="color:#e6db74">                &#34;usages&#34;: [
+</span><span style="color:#e6db74">                    &#34;signing&#34;,
+</span><span style="color:#e6db74">                    &#34;digital signing&#34;,
+</span><span style="color:#e6db74">                    &#34;key encipherment&#34;,
+</span><span style="color:#e6db74">                    &#34;server auth&#34;
+</span><span style="color:#e6db74">                ],
+</span><span style="color:#e6db74">            &#34;expiry&#34;: &#34;43800h&#34;
+</span><span style="color:#e6db74">            },
+</span><span style="color:#e6db74">            &#34;peer&#34;: {
+</span><span style="color:#e6db74">                &#34;usages&#34;: [
+</span><span style="color:#e6db74">                    &#34;signing&#34;,
+</span><span style="color:#e6db74">                    &#34;digital signature&#34;,
+</span><span style="color:#e6db74">                    &#34;key encipherment&#34;, 
+</span><span style="color:#e6db74">                    &#34;client auth&#34;,
+</span><span style="color:#e6db74">                    &#34;server auth&#34;
+</span><span style="color:#e6db74">                ],
+</span><span style="color:#e6db74">            &#34;expiry&#34;: &#34;43800h&#34;
+</span><span style="color:#e6db74">            },
+</span><span style="color:#e6db74">            &#34;client&#34;: {
+</span><span style="color:#e6db74">                &#34;usages&#34;: [
+</span><span style="color:#e6db74">                    &#34;signing&#34;,
+</span><span style="color:#e6db74">                    &#34;digital signature&#34;,
+</span><span style="color:#e6db74">                    &#34;key encipherment&#34;, 
+</span><span style="color:#e6db74">                    &#34;client auth&#34;
+</span><span style="color:#e6db74">                ],
+</span><span style="color:#e6db74">            &#34;expiry&#34;: &#34;43800h&#34;
+</span><span style="color:#e6db74">            }
+</span><span style="color:#e6db74">        }
+</span><span style="color:#e6db74">    }
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+</code></pre></div><h3 id="signing-profiles">Signing profiles</h3>
+<ul>
+<li>Server signing profile</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${LEAF_CERTS_PATH}/server.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;CN&#34;: &#34;My Service&#34;,
+</span><span style="color:#e6db74">    &#34;hosts&#34;: [
+</span><span style="color:#e6db74">        &#34;127.0.0.1&#34;,
+</span><span style="color:#e6db74">        &#34;mysvc.example.org&#34;,
+</span><span style="color:#e6db74">        &#34;mysvc-altname.example.org&#34;
+</span><span style="color:#e6db74">    ]
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+</code></pre></div><ul>
+<li>Client Signing profile</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${LEAF_CERTS_PATH}/client.json
+</span><span style="color:#e6db74">{
+</span><span style="color:#e6db74">    &#34;CN&#34;: &#34;My User&#34;,
+</span><span style="color:#e6db74">    &#34;hosts&#34;: [&#34;&#34;]
+</span><span style="color:#e6db74">}
+</span><span style="color:#e6db74">EOF</span>
+</code></pre></div><ul>
+<li>Peer signing profile (optional)</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cat <span style="color:#e6db74">&lt;&lt;EOF &gt; ${LE</span>AF_CERTS_PATH<span style="color:#f92672">}</span>/peer.json
+<span style="color:#f92672">{</span>
+    <span style="color:#e6db74">&#34;CN&#34;</span>: <span style="color:#e6db74">&#34;Peer&#34;</span>,
+    <span style="color:#e6db74">&#34;hosts&#34;</span>: <span style="color:#f92672">[</span>
+        <span style="color:#e6db74">&#34;peersvc.example.org&#34;</span>,
+        <span style="color:#f92672">]</span>
+<span style="color:#f92672">}</span>
+</code></pre></div><h3 id="create-leaf-certificates-using-dev-intermediate-ca">Create Leaf certificates (Using Dev intermediate CA)</h3>
+<blockquote>
+<p>Note: All commands are run inside the <code>leaf-certs</code> folder</p>
+</blockquote>
+<ul>
+<li>For server</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cfssl gencert -ca<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev.pem -ca-key<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev-key.pem -config<span style="color:#f92672">=</span>leaf-config.json -profile<span style="color:#f92672">=</span>client client.json | cfssljson -bare client
+</code></pre></div><ul>
+<li>For client</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cfssl gencert -ca<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev.pem -ca-key<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev-key.pem -config<span style="color:#f92672">=</span>leaf-config.json -profile<span style="color:#f92672">=</span>server server.json | cfssljson -bare server
+</code></pre></div><ul>
+<li>For peer (optional)</li>
+</ul>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">cfssl gencert -ca<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev.pem -ca-key<span style="color:#f92672">=</span><span style="color:#e6db74">${</span>DEV_INTERMED_CA_PATH<span style="color:#e6db74">}</span>/dev-key.pem -config<span style="color:#f92672">=</span>leaf-config.json -profile<span style="color:#f92672">=</span>peer peer.json | cfssljson -bare peer
+</code></pre></div><p>After running the commands you should have the following in the <code>leaf-certs</code> folder.</p>
+<pre><code>leaf-certs/
+├── client.csr
+├── client.json
+├── client-key.pem
+├── client.pem
+├── leaf-config.json
+├── server.csr
+├── server.json
+├── server-key.pem
+└── server.pem
+</code></pre><h3 id="verify-certs">Verify certs</h3>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">openssl x509 -in &lt;cert&gt;.pem -text -noout
+</code></pre></div><h2 id="references">References</h2>
+<ul>
+<li><a href="https://github.com/cloudflare/cfssl/blob/master/doc/cmd/cfssl.txt">CFSSL documentation</a></li>
+<li><a href="https://jite.eu/2019/2/6/ca-with-cfssl/">CA with CFSSL</a></li>
+</ul>
+
+		</section>
+
+		<div class="post-tags">
+			
+			
+			
+		</div>
+	</article>
+</main>
+<footer>
+<hr><a class="soc" href="https://github.com/hareeshpc" title="GitHub"><i data-feather="github"></i></a>|⚡️
+	2020  <a href="https://github.com/athul/archie">Archie Theme</a> | Built with <a href="https://gohugo.io">Hugo</a>
+</footer>
+
+
+<script>
+      feather.replace()
+</script></div>
+    </body>
+</html>
