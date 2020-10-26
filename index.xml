@@ -26,5 +26,15 @@
 Note: These notes are based on cfssl version 1.</description>
     </item>
     
+    <item>
+      <title>Hello World - First Post</title>
+      <link>http://hareeshpc.github.io/posts/01-first-post/</link>
+      <pubDate>Mon, 26 Oct 2020 22:19:09 +0100</pubDate>
+      
+      <guid>http://hareeshpc.github.io/posts/01-first-post/</guid>
+      <description>Hello World!
+The obligatory first post! :)</description>
+    </item>
+    
   </channel>
 </rss>
